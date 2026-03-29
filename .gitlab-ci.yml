@@ -1,0 +1,98 @@
+stages:
+  - test
+  - report
+  - deploy-report
+
+variables:
+  ALLURE_VERSION: "2.24.0"
+  ALLURE_RESULTS_DIRECTORY: "$CI_PROJECT_DIR/allure-results"
+  ALLURE_REPORT_DIRECTORY: "$CI_PROJECT_DIR/allure-report"
+  CLIENT: "$CLIENT_URL"  # Укажите в переменных GitLab CI/CD
+
+# Кэширование pip зависимостей
+.pip-cache: &pip-cache
+  key: ${CI_JOB_NAME}
+  paths:
+    - .cache/pip
+  policy: pull-push
+
+# Шаблон для запуска тестов
+.test-template: &test-template
+  image: python:3.11-slim
+  stage: test
+  cache:
+    <<: *pip-cache
+  before_script:
+    - pip install --cache-dir .cache/pip -r requirements.txt
+  script:
+    - pytest --order-dependencies --alluredir=$ALLURE_RESULTS_DIRECTORY -v
+  artifacts:
+    paths:
+      - allure-results/
+    expire_in: 1 week
+
+# Запуск всех тестов с правильным порядком выполнения
+run-tests:
+  <<: *test-template
+
+# Альтернатива: параллельный запуск тестов
+run-tests-parallel:
+  <<: *test-template
+  parallel: 2
+  script:
+    - pytest --order-dependencies --alluredir=$ALLURE_RESULTS_DIRECTORY -v -n auto
+  only:
+    - schedules  # Запускать только по расписанию
+
+# Генерация отчета Allure
+generate-allure-report:
+  stage: report
+  image: frankescobar/allure-docker-service:latest
+  dependencies:
+    - run-tests
+  script:
+    - allure generate $ALLURE_RESULTS_DIRECTORY -o $ALLURE_REPORT_DIRECTORY --clean
+  artifacts:
+    paths:
+      - allure-report/
+    expire_in: 1 week
+  only:
+    - main
+    - merge_requests
+
+# Публикация в Allure TestOps
+publish-to-testops:
+  stage: deploy-report
+  image: python:3.11-slim
+  dependencies:
+    - run-tests
+  before_script:
+    - apt-get update && apt-get install -y curl
+  script:
+    # Загрузка результатов в Allure TestOps
+    # Требуется установить ALLURE_TOKEN в переменных GitLab CI/CD
+    - |
+      curl -X POST "${ALLURE_TESTOPS_ENDPOINT}/api/rs/launch/import" \
+        -H "Authorization: Api-Token ${ALLURE_TOKEN}" \
+        -H "accept: */*" \
+        -H "Content-Type: multipart/form-data" \
+        -F "launchName=API Tests - ${CI_COMMIT_BRANCH}" \
+        -F "projectId=${ALLURE_PROJECT_ID}" \
+        -F "results=@allure-results.zip;type=application/zip"
+  only:
+    - main
+    - merge_requests
+  when: manual  # Запуск вручную. Удалите эту строку для автоматического запуска
+
+# Публикация отчета на GitLab Pages (опционально)
+pages:
+  stage: deploy-report
+  dependencies:
+    - generate-allure-report
+  script:
+    - mv allure-report/ public/
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

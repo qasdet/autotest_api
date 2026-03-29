@@ -1,0 +1,60 @@
+# Шаблон для GitLab CI с локальной настройкой Allure TestOps
+# Скопируйте этот файл в .gitlab-ci.yml и заполните переменные
+
+stages:
+  - test
+  - report
+  - deploy-report
+
+variables:
+  # Заполните эти переменные в GitLab CI/CD (Настройки > CI/CD > Переменные)
+  # CLIENT: "https://your-api-endpoint.com/api/v1/"
+  # ALLURE_TOKEN: "your-allure-testops-token"
+  # ALLURE_PROJECT_ID: "your-project-id"
+  # ALLURE_TESTOPS_ENDPOINT: "https://your-allure-instance.com"
+
+  ALLURE_RESULTS_DIRECTORY: "$CI_PROJECT_DIR/allure-results"
+  ALLURE_REPORT_DIRECTORY: "$CI_PROJECT_DIR/allure-report"
+
+run-tests:
+  image: python:3.11-slim
+  stage: test
+  before_script:
+    - pip install -r requirements.txt
+  script:
+    - pytest --order-dependencies --alluredir=$ALLURE_RESULTS_DIRECTORY -v
+  artifacts:
+    paths:
+      - allure-results/
+    expire_in: 1 week
+
+generate-report:
+  stage: report
+  image: frankescobar/allure-docker-service:latest
+  dependencies:
+    - run-tests
+  script:
+    - allure generate $ALLURE_RESULTS_DIRECTORY -o $ALLURE_REPORT_DIRECTORY --clean
+  artifacts:
+    paths:
+      - allure-report/
+    expire_in: 1 week
+
+# Раскомментируйте эту задачу после настройки Allure TestOps
+#publish-to-testops:
+#  stage: deploy-report
+#  image: python:3.11-slim
+#  dependencies:
+#    - run-tests
+#  script:
+#    - apt-get update && apt-get install -y curl
+#    - |
+#      curl -X POST "${ALLURE_TESTOPS_ENDPOINT}/api/rs/launch/import" \
+#        -H "Authorization: Api-Token ${ALLURE_TOKEN}" \
+#        -H "accept: */*" \
+#        -H "Content-Type: multipart/form-data" \
+#        -F "launchName=API Tests ${CI_COMMIT_BRANCH}" \
+#        -F "projectId=${ALLURE_PROJECT_ID}" \
+#        -F "results=@allure-results/"
+#  only:
+#    - main

@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  tests:
+    build: .
+    container_name: autotest_api
+    volumes:
+      - ./allure-results:/app/allure-results
+      - .:/app
+    environment:
+      - CLIENT=${CLIENT}
+      - ALLURE_RESULTS_DIRECTORY=/app/allure-results
+    command: pytest --order-dependencies --alluredir=/app/allure-results -v
+
+  # Опционально: Сервис Allure для просмотра отчетов
+  allure:
+    image: frankescobar/allure-docker-service:latest
+    container_name: allure-service
+    ports:
+      - "4040:4040"  # Веб-интерфейс
+      - "5050:5050"  # API сервиса
+    volumes:
+      - ./allure-results:/app/allure-results
+    environment:
+      - CHECK_RESULTS_EVERY_SECONDS=5
+      - KEEP_HISTORY=1
+      - KEEP_HISTORY_LATEST=20
+    depends_on:
+      - tests

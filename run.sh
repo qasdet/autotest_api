@@ -1,8 +1,15 @@
 #!/bin/bash
 
-#Тесты для POST
-pytest ./assertions/01_create/test_post_operator.py
+# Запуск тестов с правильным порядком: сначала POST, потом GET
+# Используется плагин pytest-order с флагом --order-dependencies
 
+echo "=========================================="
+echo "Запуск API тестов в порядке POST -> GET"
+echo "=========================================="
 
-#Тесты для GET
-pytest ./assertions/02_get/test_get_operators.py
+pytest assertions/ --order-dependencies --alluredir=./allure-results -v
+
+echo "=========================================="
+echo "Тесты завершены. Для просмотра отчета:"
+echo "allure serve ./allure-results"
+echo "=========================================="

@@ -1,5 +1,5 @@
 """
-payload for opers
+Payload для создания операторов
 """
 
 def localoperator(country_ids=None):
@@ -25,7 +25,7 @@ def oper_praqe(country_ids=None):
             "col3col2": "value32"
         },
         "country": {
-            "countryId": country_ids['mld_id'],
+            "countryId": country_ids.get('mld_id', country_ids.get('rus_id')),
             "countryName": "Moldova"
         }
     }

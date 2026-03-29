@@ -7,4 +7,4 @@ class GetOperatorsAPI(BaseAPI):
 
     def get_operators(self):
         response = self.get_request(endpoint=self.endpoint)
-        return response.json()
+        return response

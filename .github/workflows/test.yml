@@ -1,0 +1,91 @@
+name: API Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Запуск каждый день в 2:00 ночи
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Настройка Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Кэширование pip зависимостей
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Установка зависимостей
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Запуск тестов с Allure
+      env:
+        CLIENT: ${{ secrets.CLIENT_URL }}
+      run: |
+        pytest --order-dependencies --alluredir=./allure-results -v
+
+    - name: Загрузка результатов Allure
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: allure-results
+        path: allure-results/
+
+    - name: Генерация отчета Allure
+      uses: simple-elf/allure-report-action@master
+      if: always()
+      with:
+        allure_results: allure-results
+        allure_history: allure-history
+
+    - name: Публикация отчета на GitHub Pages
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_branch: gh-pages
+        publish_dir: allure-history
+
+  # Опционально: загрузка в Allure TestOps
+  upload-testops:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Скачивание результатов Allure
+      uses: actions/download-artifact@v4
+      with:
+        name: allure-results
+        path: allure-results/
+
+    - name: Загрузка в Allure TestOps
+      env:
+        ALLURE_TOKEN: ${{ secrets.ALLURE_TOKEN }}
+        ALLURE_PROJECT_ID: ${{ secrets.ALLURE_PROJECT_ID }}
+        ALLURE_ENDPOINT: ${{ secrets.ALLURE_ENDPOINT }}
+      run: |
+        cd allure-results && zip -r ../allure-results.zip .
+        curl -X POST "${ALLURE_ENDPOINT}/api/rs/launch/import" \
+          -H "Authorization: Api-Token ${ALLURE_TOKEN}" \
+          -H "accept: */*" \
+          -H "Content-Type: multipart/form-data" \
+          -F "launchName=API Tests - ${GITHUB_REF_NAME}" \
+          -F "projectId=${ALLURE_PROJECT_ID}" \
+          -F "results=@allure-results.zip;type=application/zip"
